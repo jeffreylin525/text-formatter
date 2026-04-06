@@ -1,0 +1,14 @@
+{
+  "name": "文書格式編輯器",
+  "short_name": "格式編輯",
+  "description": "簡易四層標號文字編輯器",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a1a1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

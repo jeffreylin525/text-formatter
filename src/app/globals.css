@@ -134,16 +134,34 @@ html, body {
   border-radius: 2px;
 }
 
-/* -- Level indentation -- */
-.para.level-1 { margin-left: 0; }
-.para.level-2 { margin-left: 2em; }
-.para.level-3 { margin-left: 4em; }
-.para.level-4 { margin-left: 5em; }
+/* -- Level indentation --
+   Levels 1-3: text all aligns at 2em from left edge.
+   Level 4:    text aligns at 3em (1 Chinese char further right).
+   Level 5:    no label, text at 2em (same as levels 1-3).
+*/
+.para.level-1,
+.para.level-2,
+.para.level-3,
+.para.level-4,
+.para.level-5 { margin-left: 0; }
 
-/* Level 4: continuation lines indent 1 Chinese char more */
-.para.level-4 textarea {
-  padding-left: 1em;
-  text-indent: -1em;
+/* Fixed-width labels so text columns align */
+.para.level-1 .label,
+.para.level-2 .label,
+.para.level-3 .label {
+  min-width: 2em;
+  width: 2em;
+  text-align: left;
+}
+.para.level-4 .label {
+  min-width: 3em;
+  width: 3em;
+  text-align: left;
+}
+
+/* Level 5: no label, indent matches levels 1-3 text position */
+.para.level-5 textarea {
+  margin-left: 2em;
 }
 
 /* Active paragraph indicator */
@@ -174,32 +192,35 @@ html, body {
   }
 
   .print-para {
+    display: flex;
+    align-items: flex-start;
     font-family: var(--font-family);
     font-size: var(--font-size);
     line-height: var(--line-height);
     color: #000;
     margin-bottom: 0.3em;
   }
+  .print-para .print-label {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .print-para .print-text {
+    flex: 1;
+    min-width: 0;
+  }
 
-  .print-para.level-1 {
-    margin-left: 0;
-    padding-left: 2em;
-    text-indent: -2em;
+  .print-para.level-1 .print-label,
+  .print-para.level-2 .print-label,
+  .print-para.level-3 .print-label {
+    min-width: 2em;
+    width: 2em;
   }
-  .print-para.level-2 {
+  .print-para.level-4 .print-label {
+    min-width: 3em;
+    width: 3em;
+  }
+  .print-para.level-5 .print-text {
     margin-left: 2em;
-    padding-left: 2em;
-    text-indent: -2em;
-  }
-  .print-para.level-3 {
-    margin-left: 4em;
-    padding-left: 1em;
-    text-indent: -1em;
-  }
-  .print-para.level-4 {
-    margin-left: 5em;
-    padding-left: 2.5em;
-    text-indent: -2.5em;
   }
 }
 

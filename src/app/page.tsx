@@ -12,7 +12,7 @@ import {
 
 /* ───────── Types ───────── */
 
-type Level = 1 | 2 | 3 | 4;
+type Level = 1 | 2 | 3 | 4 | 5;
 
 interface Para {
   id: string;
@@ -40,11 +40,13 @@ function toLabel(level: Level, count: number): string {
     case 2: return `(${cn})`;
     case 3: return `${count}.`;
     case 4: return `(${count})`;
+    case 5: return '';
   }
 }
 
 function computeLabel(paragraphs: Para[], index: number): string {
   const level = paragraphs[index].level;
+  if (level === 5) return '';
   let count = 1;
   for (let i = index - 1; i >= 0; i--) {
     if (paragraphs[i].level === level) count++;
@@ -56,9 +58,10 @@ function computeLabel(paragraphs: Para[], index: number): string {
 function indentSpaces(level: Level): string {
   switch (level) {
     case 1: return '';
-    case 2: return '    ';
-    case 3: return '        ';
-    case 4: return '          ';
+    case 2: return '';
+    case 3: return '';
+    case 4: return ' ';
+    case 5: return '  ';
   }
 }
 
@@ -221,7 +224,7 @@ export default function Home() {
         const newLevel = (
           e.shiftKey
             ? Math.max(1, para.level - 1)
-            : Math.min(4, para.level + 1)
+            : Math.min(5, para.level + 1)
         ) as Level;
         setParagraphs((ps) =>
           ps.map((p, i) => (i === index ? { ...p, level: newLevel } : p)),
@@ -340,12 +343,13 @@ export default function Home() {
       {/* Toolbar */}
       <div className="toolbar">
         <div className="toolbar-group">
-          {([1, 2, 3, 4] as Level[]).map((lv) => {
+          {([1, 2, 3, 4, 5] as Level[]).map((lv) => {
             const labels: Record<Level, string> = {
               1: '一、',
               2: '(一)',
               3: '1.',
               4: '(1)',
+              5: '無',
             };
             return (
               <button
@@ -379,7 +383,9 @@ export default function Home() {
             key={p.id}
             className={`para level-${p.level}${i === activeIdx ? ' active' : ''}`}
           >
-            <span className="label">{computeLabel(paragraphs, i)}</span>
+            {p.level !== 5 && (
+              <span className="label">{computeLabel(paragraphs, i)}</span>
+            )}
             <textarea
               ref={(el) => {
                 if (el) {
@@ -410,8 +416,10 @@ export default function Home() {
       <div className="print-view">
         {paragraphs.map((p, i) => (
           <div key={p.id} className={`print-para level-${p.level}`}>
-            {computeLabel(paragraphs, i)}
-            {p.text}
+            {p.level !== 5 && (
+              <span className="print-label">{computeLabel(paragraphs, i)}</span>
+            )}
+            <span className="print-text">{p.text}</span>
           </div>
         ))}
       </div>

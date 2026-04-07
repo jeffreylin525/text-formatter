@@ -20,6 +20,17 @@ interface Para {
   text: string;
 }
 
+interface User {
+  id: number;
+  email: string;
+}
+
+interface DocMeta {
+  id: number;
+  title: string;
+  updated_at: string;
+}
+
 /* ───────── Helpers ───────── */
 
 let _nextId = 1;
@@ -72,7 +83,7 @@ const STORAGE_KEY = 'text-formatter-doc';
 function saveToStorage(paragraphs: Para[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(paragraphs));
-  } catch { /* quota exceeded — ignore */ }
+  } catch { /* ignore */ }
 }
 
 function loadFromStorage(): Para[] | null {
@@ -81,13 +92,14 @@ function loadFromStorage(): Para[] | null {
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (Array.isArray(data) && data.length > 0) return data;
-  } catch { /* corrupt data — ignore */ }
+  } catch { /* ignore */ }
   return null;
 }
 
 /* ───────── Component ───────── */
 
 export default function Home() {
+  /* -- Core editor state -- */
   const [paragraphs, setParagraphs] = useState<Para[]>([
     { id: genId(), level: 1, text: '' },
   ]);
@@ -95,25 +107,132 @@ export default function Home() {
   const refs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
   const initialized = useRef(false);
 
-  // Load from localStorage on mount
+  /* -- Auth & cloud state -- */
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPass, setAuthPass] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [showDocs, setShowDocs] = useState(false);
+  const [docs, setDocs] = useState<DocMeta[]>([]);
+  const [cloudDocId, setCloudDocId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [docTitle, setDocTitle] = useState('未命名文件');
+
+  /* -- Init: load local + check session -- */
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
     const saved = loadFromStorage();
     if (saved) {
-      // Ensure IDs are unique
       saved.forEach((p) => { p.id = genId(); });
       setParagraphs(saved);
     }
+    // Check session
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((d) => { if (d.user) setUser(d.user); })
+      .catch(() => {})
+      .finally(() => setAuthLoading(false));
   }, []);
 
-  // Auto-save on change
+  // Auto-save to localStorage
   useEffect(() => {
     const timer = setTimeout(() => saveToStorage(paragraphs), 300);
     return () => clearTimeout(timer);
   }, [paragraphs]);
 
-  /* -- Textarea helpers -- */
+  /* ─── Auth handlers ─── */
+
+  const handleAuth = useCallback(async () => {
+    setAuthError('');
+    const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, password: authPass }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || '操作失敗');
+        return;
+      }
+      setUser(data.user);
+      setShowAuth(false);
+      setAuthEmail('');
+      setAuthPass('');
+    } catch {
+      setAuthError('網路錯誤');
+    }
+  }, [authMode, authEmail, authPass]);
+
+  const handleLogout = useCallback(async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setUser(null);
+    setCloudDocId(null);
+    setDocs([]);
+  }, []);
+
+  /* ─── Cloud document handlers ─── */
+
+  const loadDocList = useCallback(async () => {
+    const res = await fetch('/api/documents');
+    if (res.ok) {
+      const data = await res.json();
+      setDocs(data.documents);
+    }
+  }, []);
+
+  const saveToCloud = useCallback(async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const content = paragraphs.map(({ level, text }) => ({ level, text }));
+      const res = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cloudDocId, title: docTitle, content }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (!cloudDocId) setCloudDocId(data.id);
+        alert('已儲存到雲端');
+      }
+    } catch {
+      alert('儲存失敗');
+    } finally {
+      setSaving(false);
+    }
+  }, [user, paragraphs, cloudDocId, docTitle]);
+
+  const loadFromCloud = useCallback(async (docId: number) => {
+    const res = await fetch(`/api/documents/${docId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const doc = data.document;
+    const paras: Para[] = doc.content.map((p: { level: Level; text: string }) => ({
+      id: genId(),
+      level: p.level,
+      text: p.text,
+    }));
+    setParagraphs(paras);
+    setCloudDocId(doc.id);
+    setDocTitle(doc.title);
+    setShowDocs(false);
+    setActiveIdx(0);
+  }, []);
+
+  const deleteFromCloud = useCallback(async (docId: number) => {
+    if (!confirm('確定要刪除這份雲端文件嗎？')) return;
+    await fetch(`/api/documents?id=${docId}`, { method: 'DELETE' });
+    if (cloudDocId === docId) setCloudDocId(null);
+    loadDocList();
+  }, [cloudDocId, loadDocList]);
+
+  /* ─── Textarea helpers ─── */
 
   const autoResize = useCallback((el: HTMLTextAreaElement) => {
     el.style.height = 'auto';
@@ -135,12 +254,11 @@ export default function Home() {
     [autoResize],
   );
 
-  // Resize all textareas on mount and when paragraphs change
   useEffect(() => {
     refs.current.forEach((el) => autoResize(el));
   }, [paragraphs, autoResize]);
 
-  /* -- Paragraph mutations -- */
+  /* ─── Paragraph mutations ─── */
 
   const updateText = useCallback((id: string, text: string) => {
     setParagraphs((prev) => prev.map((p) => (p.id === id ? { ...p, text } : p)));
@@ -168,24 +286,18 @@ export default function Home() {
     [],
   );
 
-  const removePara = useCallback((index: number) => {
-    setParagraphs((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  /* -- Key handling -- */
+  /* ─── Key handling ─── */
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>, index: number) => {
       const ta = e.currentTarget;
       const para = paragraphs[index];
 
-      // Enter → split paragraph
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         const pos = ta.selectionStart;
         const before = para.text.slice(0, pos);
         const after = para.text.slice(pos);
-
         setParagraphs((prev) => {
           const copy = [...prev];
           copy[index] = { ...copy[index], text: before };
@@ -197,7 +309,6 @@ export default function Home() {
         return;
       }
 
-      // Backspace at start → merge with previous
       if (
         e.key === 'Backspace' &&
         ta.selectionStart === 0 &&
@@ -218,7 +329,6 @@ export default function Home() {
         return;
       }
 
-      // Tab / Shift+Tab → change level
       if (e.key === 'Tab') {
         e.preventDefault();
         const newLevel = (
@@ -232,7 +342,6 @@ export default function Home() {
         return;
       }
 
-      // ArrowUp at start → focus previous
       if (e.key === 'ArrowUp' && ta.selectionStart === 0 && index > 0) {
         e.preventDefault();
         setActiveIdx(index - 1);
@@ -240,7 +349,6 @@ export default function Home() {
         return;
       }
 
-      // ArrowDown at end → focus next
       if (
         e.key === 'ArrowDown' &&
         ta.selectionStart === para.text.length &&
@@ -255,12 +363,12 @@ export default function Home() {
     [paragraphs, insertParaAfter, focusPara],
   );
 
-  /* -- Paste handling -- */
+  /* ─── Paste handling ─── */
 
   const handlePaste = useCallback(
     (e: ClipboardEvent<HTMLTextAreaElement>, index: number) => {
       const text = e.clipboardData.getData('text/plain');
-      if (!text.includes('\n')) return; // single-line paste → default behavior
+      if (!text.includes('\n')) return;
 
       e.preventDefault();
       const ta = e.currentTarget;
@@ -273,11 +381,8 @@ export default function Home() {
 
       setParagraphs((prev) => {
         const copy = [...prev];
-        // First line merges with text before cursor
         const firstText = before + (lines[0] ?? '');
         copy[index] = { ...copy[index], text: firstText };
-
-        // Middle lines become new paragraphs
         const newParas: Para[] = [];
         for (let i = 1; i < lines.length; i++) {
           const lineText = i === lines.length - 1 ? lines[i] + after : lines[i];
@@ -287,20 +392,19 @@ export default function Home() {
         return copy;
       });
 
-      // Focus last inserted paragraph
       const lastIdx = index + lines.length - 1;
       setTimeout(() => {
         setActiveIdx(lastIdx);
         const keys = Array.from(refs.current.keys());
         if (keys[lastIdx]) {
-          focusPara(keys[lastIdx], (lines[lines.length - 1] ?? '').length + (lines.length === 1 ? 0 : 0));
+          focusPara(keys[lastIdx], (lines[lines.length - 1] ?? '').length);
         }
       }, 50);
     },
     [paragraphs, focusPara],
   );
 
-  /* -- Export TXT -- */
+  /* ─── Export ─── */
 
   const exportTxt = useCallback(() => {
     const lines = paragraphs.map((p, i) => {
@@ -313,24 +417,22 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = '文件.txt';
+    a.download = `${docTitle}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [paragraphs]);
-
-  /* -- Export PDF (via print) -- */
+  }, [paragraphs, docTitle]);
 
   const exportPdf = useCallback(() => {
     window.print();
   }, []);
-
-  /* -- New document -- */
 
   const newDoc = useCallback(() => {
     if (!confirm('確定要新建文件嗎？目前的內容將被清除。')) return;
     const id = genId();
     setParagraphs([{ id, level: 1, text: '' }]);
     setActiveIdx(0);
+    setCloudDocId(null);
+    setDocTitle('未命名文件');
     focusPara(id, 0);
   }, [focusPara]);
 
@@ -356,7 +458,7 @@ export default function Home() {
                 key={lv}
                 className={activePara?.level === lv ? 'active' : ''}
                 onClick={() => setLevel(lv)}
-                title={`樣式 ${lv} (Tab/Shift+Tab 切換)`}
+                title={`樣式 ${lv}`}
               >
                 {labels[lv]}
               </button>
@@ -365,16 +467,44 @@ export default function Home() {
         </div>
         <div className="toolbar-divider" />
         <div className="toolbar-group">
-          <button className="export-btn" onClick={exportTxt}>
-            存 TXT
-          </button>
-          <button className="export-btn" onClick={exportPdf}>
-            存 PDF
-          </button>
+          <button className="export-btn" onClick={exportTxt}>存 TXT</button>
+          <button className="export-btn" onClick={exportPdf}>存 PDF</button>
         </div>
         <div className="toolbar-divider" />
         <button onClick={newDoc}>新建</button>
+
+        {/* Cloud buttons */}
+        <div className="toolbar-divider" />
+        {authLoading ? null : user ? (
+          <div className="toolbar-group">
+            <button className="cloud-btn" onClick={saveToCloud} disabled={saving}>
+              {saving ? '儲存中...' : '存雲端'}
+            </button>
+            <button className="cloud-btn" onClick={() => { setShowDocs(true); loadDocList(); }}>
+              開啟
+            </button>
+            <span className="user-badge" title={user.email}>
+              {user.email.split('@')[0]}
+            </span>
+            <button onClick={handleLogout}>登出</button>
+          </div>
+        ) : (
+          <button onClick={() => setShowAuth(true)}>登入</button>
+        )}
       </div>
+
+      {/* Document title (when logged in) */}
+      {user && (
+        <div className="doc-title-bar">
+          <input
+            className="doc-title-input"
+            value={docTitle}
+            onChange={(e) => setDocTitle(e.target.value)}
+            placeholder="文件標題"
+          />
+          {cloudDocId && <span className="cloud-badge">雲端文件 #{cloudDocId}</span>}
+        </div>
+      )}
 
       {/* Editor */}
       <div className="editor">
@@ -412,7 +542,7 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Print view (hidden on screen, visible on print) */}
+      {/* Print view */}
       <div className="print-view">
         {paragraphs.map((p, i) => (
           <div key={p.id} className={`print-para level-${p.level}`}>
@@ -423,6 +553,73 @@ export default function Home() {
           </div>
         ))}
       </div>
+
+      {/* ── Auth Modal ── */}
+      {showAuth && (
+        <div className="modal-overlay" onClick={() => setShowAuth(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{authMode === 'login' ? '登入' : '註冊'}</h2>
+            {authError && <p className="auth-error">{authError}</p>}
+            <input
+              type="email"
+              placeholder="Email"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+            />
+            <input
+              type="password"
+              placeholder="密碼（至少 6 字元）"
+              value={authPass}
+              onChange={(e) => setAuthPass(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+            />
+            <button className="modal-primary" onClick={handleAuth}>
+              {authMode === 'login' ? '登入' : '註冊'}
+            </button>
+            <p className="auth-switch">
+              {authMode === 'login' ? (
+                <>還沒有帳號？<button onClick={() => { setAuthMode('register'); setAuthError(''); }}>前往註冊</button></>
+              ) : (
+                <>已有帳號？<button onClick={() => { setAuthMode('login'); setAuthError(''); }}>前往登入</button></>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Documents Modal ── */}
+      {showDocs && (
+        <div className="modal-overlay" onClick={() => setShowDocs(false)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+            <h2>我的雲端文件</h2>
+            {docs.length === 0 ? (
+              <p className="docs-empty">尚無雲端文件</p>
+            ) : (
+              <ul className="docs-list">
+                {docs.map((d) => (
+                  <li key={d.id}>
+                    <button className="doc-item" onClick={() => loadFromCloud(d.id)}>
+                      <span className="doc-item-title">{d.title}</span>
+                      <span className="doc-item-date">
+                        {new Date(d.updated_at).toLocaleDateString('zh-TW')}
+                      </span>
+                    </button>
+                    <button
+                      className="doc-delete"
+                      onClick={() => deleteFromCloud(d.id)}
+                      title="刪除"
+                    >
+                      &times;
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button onClick={() => setShowDocs(false)}>關閉</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

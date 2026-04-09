@@ -444,6 +444,7 @@ export default function Home() {
     <div className="app">
       {/* Toolbar */}
       <div className="toolbar">
+        {/* Level format buttons */}
         <div className="toolbar-group">
           {([1, 2, 3, 4, 5] as Level[]).map((lv) => {
             const labels: Record<Level, string> = {
@@ -451,45 +452,58 @@ export default function Home() {
               2: '(一)',
               3: '1.',
               4: '(1)',
-              5: '無',
+              5: '內文',
+            };
+            const titles: Record<Level, string> = {
+              1: '第一層（一、）',
+              2: '第二層（(一)）',
+              3: '第三層（1.）',
+              4: '第四層（(1)）',
+              5: '無標號內文',
             };
             return (
               <button
                 key={lv}
                 className={activePara?.level === lv ? 'active' : ''}
                 onClick={() => setLevel(lv)}
-                title={`樣式 ${lv}`}
+                title={titles[lv]}
               >
                 {labels[lv]}
               </button>
             );
           })}
         </div>
+
         <div className="toolbar-divider" />
+
+        {/* File actions */}
         <div className="toolbar-group">
-          <button className="export-btn" onClick={exportTxt}>存 TXT</button>
-          <button className="export-btn" onClick={exportPdf}>存 PDF</button>
+          <button onClick={newDoc} title="新建文件">新建</button>
+          <button className="export-btn" onClick={exportTxt} title="匯出為 TXT 檔">存 TXT</button>
+          <button className="export-btn" onClick={exportPdf} title="列印 / 存為 PDF">存 PDF</button>
         </div>
-        <div className="toolbar-divider" />
-        <button onClick={newDoc}>新建</button>
 
         {/* Cloud buttons */}
-        <div className="toolbar-divider" />
-        {authLoading ? null : user ? (
-          <div className="toolbar-group">
-            <button className="cloud-btn" onClick={saveToCloud} disabled={saving}>
-              {saving ? '儲存中...' : '存雲端'}
-            </button>
-            <button className="cloud-btn" onClick={() => { setShowDocs(true); loadDocList(); }}>
-              開啟
-            </button>
-            <span className="user-badge" title={user.email}>
-              {user.email.split('@')[0]}
-            </span>
-            <button onClick={handleLogout}>登出</button>
-          </div>
-        ) : (
-          <button onClick={() => setShowAuth(true)}>登入</button>
+        {!authLoading && (
+          <>
+            <div className="toolbar-divider" />
+            {user ? (
+              <div className="toolbar-group">
+                <button className="cloud-btn" onClick={saveToCloud} disabled={saving} title="儲存至雲端">
+                  {saving ? '儲存中…' : '存雲端'}
+                </button>
+                <button className="cloud-btn" onClick={() => { setShowDocs(true); loadDocList(); }} title="開啟雲端文件">
+                  開啟
+                </button>
+                <span className="user-badge" title={user.email}>
+                  {user.email.split('@')[0]}
+                </span>
+                <button onClick={handleLogout} title="登出帳號">登出</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowAuth(true)}>登入</button>
+            )}
+          </>
         )}
       </div>
 
@@ -558,14 +572,18 @@ export default function Home() {
       {showAuth && (
         <div className="modal-overlay" onClick={() => setShowAuth(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{authMode === 'login' ? '登入' : '註冊'}</h2>
+            <div className="modal-header">
+              <h2>{authMode === 'login' ? '登入帳號' : '建立帳號'}</h2>
+              <button className="modal-close" onClick={() => setShowAuth(false)} aria-label="關閉">×</button>
+            </div>
             {authError && <p className="auth-error">{authError}</p>}
             <input
               type="email"
-              placeholder="Email"
+              placeholder="電子郵件"
               value={authEmail}
               onChange={(e) => setAuthEmail(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+              autoComplete="email"
             />
             <input
               type="password"
@@ -573,9 +591,10 @@ export default function Home() {
               value={authPass}
               onChange={(e) => setAuthPass(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+              autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
             />
             <button className="modal-primary" onClick={handleAuth}>
-              {authMode === 'login' ? '登入' : '註冊'}
+              {authMode === 'login' ? '登入' : '建立帳號'}
             </button>
             <p className="auth-switch">
               {authMode === 'login' ? (
@@ -592,7 +611,10 @@ export default function Home() {
       {showDocs && (
         <div className="modal-overlay" onClick={() => setShowDocs(false)}>
           <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-            <h2>我的雲端文件</h2>
+            <div className="modal-header">
+              <h2>我的雲端文件</h2>
+              <button className="modal-close" onClick={() => setShowDocs(false)} aria-label="關閉">×</button>
+            </div>
             {docs.length === 0 ? (
               <p className="docs-empty">尚無雲端文件</p>
             ) : (
@@ -608,7 +630,7 @@ export default function Home() {
                     <button
                       className="doc-delete"
                       onClick={() => deleteFromCloud(d.id)}
-                      title="刪除"
+                      title="刪除此文件"
                     >
                       &times;
                     </button>
@@ -616,7 +638,6 @@ export default function Home() {
                 ))}
               </ul>
             )}
-            <button onClick={() => setShowDocs(false)}>關閉</button>
           </div>
         </div>
       )}

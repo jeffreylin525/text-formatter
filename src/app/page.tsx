@@ -107,6 +107,9 @@ export default function Home() {
   const refs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
   const initialized = useRef(false);
 
+  /* -- Dark mode -- */
+  const [darkMode, setDarkMode] = useState(false);
+
   /* -- Auth & cloud state -- */
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -121,10 +124,15 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [docTitle, setDocTitle] = useState('未命名文件');
 
-  /* -- Init: load local + check session -- */
+  /* -- Init: load local + check session + dark mode -- */
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+
+    // Sync dark mode state with what anti-FOUC script already set
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    setDarkMode(isDark);
+
     const saved = loadFromStorage();
     if (saved) {
       saved.forEach((p) => { p.id = genId(); });
@@ -136,6 +144,15 @@ export default function Home() {
       .then((d) => { if (d.user) setUser(d.user); })
       .catch(() => {})
       .finally(() => setAuthLoading(false));
+  }, []);
+
+  const toggleDark = useCallback(() => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
+      try { localStorage.setItem('theme', next ? 'dark' : 'light'); } catch { /* ignore */ }
+      return next;
+    });
   }, []);
 
   // Auto-save to localStorage
@@ -482,6 +499,16 @@ export default function Home() {
           <button className="export-btn" onClick={exportTxt} title="匯出為 TXT 檔">存 TXT</button>
           <button className="export-btn" onClick={exportPdf} title="列印 / 存為 PDF">存 PDF</button>
         </div>
+
+        {/* Dark mode toggle */}
+        <div className="toolbar-divider" />
+        <button
+          className="dark-toggle"
+          onClick={toggleDark}
+          title={darkMode ? '切換淺色模式' : '切換深色模式'}
+        >
+          {darkMode ? '☀' : '⏾'}
+        </button>
 
         {/* Cloud buttons */}
         {!authLoading && (

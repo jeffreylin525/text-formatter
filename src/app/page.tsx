@@ -60,6 +60,7 @@ function computeLabel(paragraphs: Para[], index: number): string {
   if (level === 5) return '';
   let count = 1;
   for (let i = index - 1; i >= 0; i--) {
+    if (paragraphs[i].level === 5) break;
     if (paragraphs[i].level === level) count++;
     else if (paragraphs[i].level < level) break;
   }
@@ -271,8 +272,13 @@ export default function Home() {
     [autoResize],
   );
 
+  const editorRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
+    const editor = editorRef.current;
+    const scrollTop = editor?.scrollTop ?? 0;
     refs.current.forEach((el) => autoResize(el));
+    if (editor) editor.scrollTop = scrollTop;
   }, [paragraphs, autoResize]);
 
   /* ─── Paragraph mutations ─── */
@@ -548,7 +554,7 @@ export default function Home() {
       )}
 
       {/* Editor */}
-      <div className="editor">
+      <div className="editor" ref={editorRef}>
         {paragraphs.map((p, i) => (
           <div
             key={p.id}
